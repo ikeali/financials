@@ -3,10 +3,8 @@ services:
   db:
     image: postgres:13
     restart: always
-    environment:
-      POSTGRES_DB: finance
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ikeali123%%
+    env_file:
+      - .env 
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -19,15 +17,9 @@ services:
       - "8000:8000"
     depends_on:
       - db
-      - redis  
-    environment:
-      ENGINE: django.db.backends.postgresql
-      REDIS_URL: redis://localhost:6379/0 
-      NAME: finance
-      USERR: postgres
-      PASSWORD: ikeali123%% 
-      HOST: db  
-      PORT: 5432
+      - redis
+    env_file:
+      - .env
 
   redis:
     image: redis:latest
