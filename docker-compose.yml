@@ -1,0 +1,37 @@
+
+services:
+  db:
+    image: postgres:13
+    restart: always
+    environment:
+      POSTGRES_DB: finance
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ikeali123%%
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  web:
+    build: .
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis  
+    environment:
+      ENGINE: django.db.backends.postgresql
+      REDIS_URL: redis://localhost:6379/0 
+      NAME: finance
+      USERR: postgres
+      PASSWORD: ikeali123%% 
+      HOST: db  
+      PORT: 5432
+
+  redis:
+    image: redis:latest
+    restart: always  # Optional: ensures Redis restarts if it fails
+
+volumes:
+  postgres_data:
