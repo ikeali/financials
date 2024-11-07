@@ -24,7 +24,7 @@ from decouple import config
 def check_transaction_limit(user_id, amount):
     try:
         user = User.objects.get(id=user_id)
-        account = Account.objects.get(user=user)  # Assuming Account has a ForeignKey to User
+        account = Account.objects.get(user=user)  
     except User.DoesNotExist:
         print(f"User with id {user_id} does not exist.")
         return "User not found"
@@ -34,6 +34,7 @@ def check_transaction_limit(user_id, amount):
 
     # Check if the transaction amount exceeds the account balance
     if account.balance < amount:
+       print('sending')
        send_mail(
             'Transaction Limit Exceeded',
             f'Dear {user.username}, your transaction of amount {amount} exceeds your limit.',

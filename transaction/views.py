@@ -8,6 +8,8 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from .models import *
 from .serializers import *
 from rest_framework.permissions import IsAuthenticated
+from .tasks import check_transaction_limit  # Assuming your Celery task is in tasks.py
+
 
 
 class RegisterView(APIView):
@@ -31,27 +33,42 @@ class TransactionCreateAPIView(APIView):
         if serializer.is_valid():
             account = Account.objects.get(user=request.user)
             transaction_type = serializer.validated_data.get("transaction_type")
+            amount = serializer.validated_data.get("amount")
             transaction = serializer.save(user=request.user)
 
             # Initialize status to 'pending'
             transaction.status = "pending"
 
+            # Limit check for withdrawals and transfers
+            if transaction_type in ["withdrawal", "transfer"]:
+                if account.balance < amount:
+                    # Trigger asynchronous email if the limit is exceeded
+                    check_transaction_limit.delay(request.user.id, amount)
+
+                    transaction.status = "failed"
+                    transaction.save()
+                    return Response(
+                        {'error': 'Transaction exceeds your allowed balance limit.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+            # Handle different transaction types
             if transaction_type == "deposit":
-                account.update_balance(transaction.amount)
-                transaction.status = "completed"  
+                account.update_balance(amount)
+                transaction.status = "completed"
             elif transaction_type == "withdrawal":
-                if account.balance >= transaction.amount:
-                    account.update_balance(-transaction.amount)
-                    transaction.status = "completed" 
+                if account.balance >= amount:
+                    account.update_balance(-amount)
+                    transaction.status = "completed"
                 else:
-                    transaction.status = "failed"  
+                    transaction.status = "failed"
             elif transaction_type == "transfer":
                 recipient_account_number = request.data.get("recipient_account_number")
                 recipient_bank_name = request.data.get("recipient_bank_name")
 
                 if not recipient_account_number or not recipient_bank_name:
-                    transaction.status = "failed"  
-                    transaction.save()  
+                    transaction.status = "failed"
+                    transaction.save()
                     return Response(
                         {'error': 'Recipient account number and bank name are required for transfers.'},
                         status=status.HTTP_400_BAD_REQUEST
@@ -62,21 +79,20 @@ class TransactionCreateAPIView(APIView):
                         account_number=recipient_account_number,
                         bank_name=recipient_bank_name
                     )
-                    if account.balance >= transaction.amount:
-                        account.update_balance(-transaction.amount)
-                        recipient_account.update_balance(transaction.amount)
-                        transaction.status = "completed"  
+                    if account.balance >= amount:
+                        account.update_balance(-amount)
+                        recipient_account.update_balance(amount)
+                        transaction.status = "completed"
                     else:
-                        transaction.status = "failed"  
+                        transaction.status = "failed"
                 except Account.DoesNotExist:
-                    transaction.status = "failed" 
+                    transaction.status = "failed"
                     transaction.save()
                     return Response(
                         {'error': 'Recipient account does not exist.'},
                         status=status.HTTP_404_NOT_FOUND
                     )
 
-            # Save the transaction with the updated status
             transaction.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -84,8 +100,9 @@ class TransactionCreateAPIView(APIView):
 
 
 
+
 class TransactionListAPIView(APIView):
-    # authentication_classes = [JWTAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
